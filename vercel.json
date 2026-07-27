@@ -16,7 +16,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/LoginPage.jsx"
+      "destination": "/index.html"
     }
   ]
 }
