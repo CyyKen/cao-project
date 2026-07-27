@@ -1,0 +1,768 @@
+import { useMemo, useState } from 'react';
+import { API_BASE, authHeaders } from '../services/api';
+
+const municipalities = [
+  'Basud',
+  'Capalonga',
+  'Daet',
+  'Jose Panganiban',
+  'Labo',
+  'Mercedes',
+  'Paracale',
+  'San Lorenzo Ruiz',
+  'Talisay',
+  'Others',
+];
+
+const barangays = [
+  'Aguirangan',
+  'Magang',
+  'Bagong Silang',
+  'Calintaan',
+  'Poblacion',
+  'San Antonio',
+  'San Francisco',
+  'San Vicente',
+  'Others',
+];
+
+const schools = [
+  'Camarines Norte State College',
+  'Ateneo de Naga University',
+  'University of Nueva Caceres',
+  'Others',
+];
+
+const courses = [
+  'BS Education',
+  'BS Information Technology',
+  'BS Computer Science',
+  'BS Accountancy',
+  'BS Nursing',
+  'Others',
+];
+
+const yearLevels = ['1st Year', '2nd Year', '3rd Year', '4th Year', 'Graduate'];
+const sexOptions = ['Male', 'Female', 'Prefer not to say'];
+const civilStatuses = ['Single', 'Married', 'Separated', 'Widowed'];
+const incomeOptions = [
+  'Below ₱50,000',
+  '₱50,000 - ₱100,000',
+  '₱100,001 - ₱150,000',
+  '₱150,001 - ₱200,000',
+  'Above ₱200,000',
+];
+const gwaOptions = Array.from({ length: 21 }, (_, index) => 80 + index);
+const countOptions = ['0', '1', '2', '3', '4', '5+'];
+
+const yesNoOptions = ['Yes', 'No'];
+
+const validateName = (value) => /^[A-ZÑ\s.'-]+$/.test(value.trim());
+const validateMobile = (value) => /^\d{1,11}$/.test(value.trim());
+const validateEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const validateDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime());
+
+function ApplicationForm({ token, user, onCreated, step: externalStep, setStep: externalSetStep }) {
+  const [internalStep, setInternalStep] = useState(0);
+  const step = typeof externalStep === 'number' ? externalStep : internalStep;
+  const setStep = externalSetStep || setInternalStep;
+  const [completed, setCompleted] = useState(new Set());
+  const [submitted, setSubmitted] = useState(false);
+  const [formState, setFormState] = useState({
+    firstName: '',
+    middleName: '',
+    familyName: '',
+    nameExtension: '',
+    email: user?.email || '',
+    mobile: '',
+    birthday: '',
+    birthplace: '',
+    sex: '',
+    civilStatus: '',
+    houseNumber: '',
+    municipality: '',
+    barangay: '',
+    school: '',
+    course: '',
+    incomingYearLevel: '',
+    fatherName: '',
+    fatherOccupation: '',
+    motherName: '',
+    motherOccupation: '',
+    guardianName: '',
+    guardianOccupation: '',
+    familyIncome: '',
+    gwa: '',
+    brothersCount: '',
+    sistersCount: '',
+    graduatedHonors: '',
+    championContest: '',
+    alsPasser: '',
+    pwd: '',
+    childOfPwd: '',
+    soloParent: '',
+    indigenousGroup: '',
+  });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const stepTitles = [
+    'Personal',
+    'Address & Academic',
+    'Family & Eligibility',
+  ];
+
+  const stepDescriptions = [
+    'Share your identity and contact details.',
+    'Add your address and academic plans.',
+    'Tell us about your household and eligibility.',
+  ];
+
+  const handleChange = (key, value) => {
+    let parsedValue = value;
+
+    if (['firstName', 'middleName', 'familyName', 'nameExtension', 'birthplace', 'fatherName', 'motherName', 'guardianName'].includes(key)) {
+      parsedValue = value.toUpperCase();
+    }
+
+    if (key === 'mobile') {
+      parsedValue = value.replace(/\D/g, '').slice(0, 11);
+    }
+
+    setFormState((prev) => ({ ...prev, [key]: parsedValue }));
+    setFieldErrors((prev) => ({ ...prev, [key]: '' }));
+  };
+
+  const validateCurrentStep = () => {
+    const errors = {};
+    const required = {
+      0: ['firstName', 'familyName', 'email', 'mobile', 'birthday', 'birthplace', 'sex', 'civilStatus'],
+      1: ['houseNumber', 'municipality', 'barangay', 'incomingYearLevel'],
+      2: ['fatherName', 'fatherOccupation', 'motherName', 'motherOccupation', 'familyIncome', 'gwa', 'brothersCount', 'sistersCount', 'graduatedHonors', 'championContest', 'alsPasser', 'pwd', 'childOfPwd', 'soloParent', 'indigenousGroup'],
+    };
+
+    const keys = required[step] || [];
+    keys.forEach((key) => {
+      const value = formState[key];
+      if (!value || (typeof value === 'string' && !value.trim())) {
+        errors[key] = 'This field is required.';
+      }
+    });
+
+    if (!formState.firstName || !validateName(formState.firstName)) {
+      errors.firstName = 'Use uppercase letters only.';
+    }
+
+    if (formState.middleName && !validateName(formState.middleName)) {
+      errors.middleName = 'Use uppercase letters only.';
+    }
+
+    if (!formState.familyName || !validateName(formState.familyName)) {
+      errors.familyName = 'Use uppercase letters only.';
+    }
+
+    if (formState.nameExtension && !validateName(formState.nameExtension)) {
+      errors.nameExtension = 'Use uppercase letters only.';
+    }
+
+    if (formState.email && !validateEmail(formState.email)) {
+      errors.email = 'Enter a valid email address.';
+    }
+
+    if (formState.mobile && !validateMobile(formState.mobile)) {
+      errors.mobile = 'Enter up to 11 digits.';
+    }
+
+    if (formState.birthday && !validateDate(formState.birthday)) {
+      errors.birthday = 'Use YYYY-MM-DD.';
+    }
+
+    if (formState.birthplace && formState.birthplace.trim().length < 2) {
+      errors.birthplace = 'Enter a valid birthplace.';
+    }
+
+    if (formState.fatherName && !validateName(formState.fatherName)) {
+      errors.fatherName = 'Use uppercase letters only.';
+    }
+
+    if (formState.motherName && !validateName(formState.motherName)) {
+      errors.motherName = 'Use uppercase letters only.';
+    }
+
+    if (formState.guardianName && !validateName(formState.guardianName)) {
+      errors.guardianName = 'Use uppercase letters only.';
+    }
+
+    if (formState.gwa && (!/^\d{2,3}$/.test(String(formState.gwa)) || Number(formState.gwa) < 80 || Number(formState.gwa) > 100)) {
+      errors.gwa = 'GWA must be 80-100.';
+    }
+
+    setFieldErrors(errors);
+
+    if (Object.keys(errors).length) {
+      setError('Please correct the highlighted fields before continuing.');
+      return false;
+    }
+
+    setError('');
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!validateCurrentStep()) {
+      return;
+    }
+    setCompleted(prev => new Set([...prev, step]));
+    if (step < stepTitles.length - 1) {
+      setStep(step + 1);
+    } else {
+      handleSubmit(new Event('submit'));
+    }
+  };
+
+  const handleBack = () => {
+    setError('');
+    if (step > 0) {
+      setStep(step - 1);
+    }
+  };
+
+  const handleStepClick = (index) => {
+    setStep(index);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!validateCurrentStep()) {
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    const personalInfo = {
+      identity: {
+        firstName: formState.firstName,
+        middleName: formState.middleName,
+        familyName: formState.familyName,
+        nameExtension: formState.nameExtension,
+        email: user?.email || formState.email,
+        mobile: formState.mobile,
+        birthday: formState.birthday,
+        birthplace: formState.birthplace,
+        sex: formState.sex,
+        civilStatus: formState.civilStatus,
+      },
+      address: {
+        houseNumber: formState.houseNumber,
+        municipality: formState.municipality,
+        barangay: formState.barangay,
+      },
+      schoolPlan: {
+        school: formState.school,
+        course: formState.course,
+        incomingYearLevel: formState.incomingYearLevel,
+      },
+      family: {
+        fatherName: formState.fatherName,
+        fatherOccupation: formState.fatherOccupation,
+        motherName: formState.motherName,
+        motherOccupation: formState.motherOccupation,
+        guardianName: formState.guardianName,
+        guardianOccupation: formState.guardianOccupation,
+        familyIncome: formState.familyIncome,
+        gwa: formState.gwa,
+        brothersCount: formState.brothersCount,
+        sistersCount: formState.sistersCount,
+      },
+      eligibility: {
+        graduatedHonors: formState.graduatedHonors,
+        championContest: formState.championContest,
+        alsPasser: formState.alsPasser,
+        pwd: formState.pwd,
+        childOfPwd: formState.childOfPwd,
+        soloParent: formState.soloParent,
+        indigenousGroup: formState.indigenousGroup,
+      },
+    };
+
+    try {
+      const bodyPayload = {
+        personalInfo,
+        initialDocs: {},
+      };
+
+      if (!user) {
+        bodyPayload.email = formState.email;
+        bodyPayload.password = `Scholar@${Math.random().toString(36).slice(2, 10)}`;
+      }
+
+      const response = await fetch(`${API_BASE}/applications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(token),
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+
+      const body = await response.json();
+      if (!response.ok) {
+        setError(body.message || 'Application submission failed.');
+        return;
+      }
+      setSuccess('Application submitted successfully.');
+      onCreated(body.scholar);
+      setStep(0);
+    } catch (err) {
+      setError('Unable to connect to backend.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const stepContent = useMemo(() => {
+    switch (step) {
+      case 0:
+        return (
+          <div className="form-step-shell">
+            <div className="section-card">
+              <div className="section-card-header">
+                <h3 className="section-card-title">Personal information</h3>
+                <p className="section-card-subtitle">Provide your core details so the scholarship team can verify your identity.</p>
+              </div>
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  First Name *
+                  <input
+                    type="text"
+                    value={formState.firstName}
+                    onChange={(e) => handleChange('firstName', e.target.value)}
+                  />
+                  {fieldErrors.firstName && <span className="field-hint error">{fieldErrors.firstName}</span>}
+                </label>
+                <label className="form-label">
+                  Middle Name
+                  <input
+                    type="text"
+                    value={formState.middleName}
+                    onChange={(e) => handleChange('middleName', e.target.value)}
+                    placeholder="Optional"
+                  />
+                  {fieldErrors.middleName && <span className="field-hint error">{fieldErrors.middleName}</span>}
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Family Name *
+                  <input
+                    type="text"
+                    value={formState.familyName}
+                    onChange={(e) => handleChange('familyName', e.target.value)}
+                  />
+                  {fieldErrors.familyName && <span className="field-hint error">{fieldErrors.familyName}</span>}
+                </label>
+                <label className="form-label">
+                  Name Extension
+                  <input
+                    type="text"
+                    value={formState.nameExtension}
+                    onChange={(e) => handleChange('nameExtension', e.target.value)}
+                    placeholder="e.g. Jr, Sr"
+                  />
+                  {fieldErrors.nameExtension && <span className="field-hint error">{fieldErrors.nameExtension}</span>}
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Email Address {user ? '' : '*'}
+                  <input
+                    type="email"
+                    value={formState.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    disabled={Boolean(user)}
+                    placeholder="you@example.com"
+                  />
+                  {fieldErrors.email && <span className="field-hint error">{fieldErrors.email}</span>}
+                </label>
+                <label className="form-label">
+                  Mobile Number *
+                  <input
+                    type="tel"
+                    value={formState.mobile}
+                    onChange={(e) => handleChange('mobile', e.target.value)}
+                    placeholder="09XXXXXXXXX"
+                  />
+                  {fieldErrors.mobile && <span className="field-hint error">{fieldErrors.mobile}</span>}
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Birthday *
+                  <input
+                    type="date"
+                    value={formState.birthday}
+                    onChange={(e) => handleChange('birthday', e.target.value)}
+                  />
+                  {fieldErrors.birthday && <span className="field-hint error">{fieldErrors.birthday}</span>}
+                </label>
+                <label className="form-label">
+                  Birthplace *
+                  <input
+                    type="text"
+                    value={formState.birthplace}
+                    onChange={(e) => handleChange('birthplace', e.target.value)}
+                    placeholder="Enter birthplace"
+                  />
+                  {fieldErrors.birthplace && <span className="field-hint error">{fieldErrors.birthplace}</span>}
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Sex *
+                  <select value={formState.sex} onChange={(e) => handleChange('sex', e.target.value)}>
+                    <option value="">Select</option>
+                    {sexOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-label">
+                  Civil Status *
+                  <select
+                    value={formState.civilStatus}
+                    onChange={(e) => handleChange('civilStatus', e.target.value)}
+                  >
+                    <option value="">Select</option>
+                    {civilStatuses.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+        );
+      case 1:
+        return (
+          <div className="form-step-shell">
+            <div className="section-card">
+              <div className="section-card-header">
+                <h3 className="section-card-title">Address and academic plans</h3>
+                <p className="section-card-subtitle">Tell us where you live and what school pathway you are preparing for.</p>
+              </div>
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  House No./Street/Purok *
+                  <input
+                    type="text"
+                    value={formState.houseNumber}
+                    onChange={(e) => handleChange('houseNumber', e.target.value)}
+                  />
+                </label>
+                <label className="form-label">
+                  Municipality *
+                  <select
+                    value={formState.municipality}
+                    onChange={(e) => handleChange('municipality', e.target.value)}
+                  >
+                    <option value="">Select municipality</option>
+                    {municipalities.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Barangay *
+                  <select
+                    value={formState.barangay}
+                    onChange={(e) => handleChange('barangay', e.target.value)}
+                  >
+                    <option value="">Select barangay</option>
+                    {barangays.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-label">
+                  Incoming Year Level *
+                  <select
+                    value={formState.incomingYearLevel}
+                    onChange={(e) => handleChange('incomingYearLevel', e.target.value)}
+                  >
+                    <option value="">Select year level</option>
+                    {yearLevels.map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="section-heading">School plans</div>
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  School (Optional)
+                  <select
+                    value={formState.school}
+                    onChange={(e) => handleChange('school', e.target.value)}
+                  >
+                    <option value="">Choose school</option>
+                    {schools.map((school) => (
+                      <option key={school} value={school}>{school}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-label">
+                  Course (Optional)
+                  <select
+                    value={formState.course}
+                    onChange={(e) => handleChange('course', e.target.value)}
+                  >
+                    <option value="">Choose course</option>
+                    {courses.map((course) => (
+                      <option key={course} value={course}>{course}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+        );
+      case 2:
+        return (
+          <div className="form-step-shell">
+            <div className="section-card">
+              <div className="section-card-header">
+                <h3 className="section-card-title">Family and eligibility details</h3>
+                <p className="section-card-subtitle">Share your household background and any eligibility information that may support your application.</p>
+              </div>
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Father's Full Name *
+                  <input
+                    type="text"
+                    value={formState.fatherName}
+                    onChange={(e) => handleChange('fatherName', e.target.value)}
+                  />
+                  {fieldErrors.fatherName && <span className="field-hint error">{fieldErrors.fatherName}</span>}
+                </label>
+                <label className="form-label">
+                  Father's Occupation *
+                  <input
+                    type="text"
+                    value={formState.fatherOccupation}
+                    onChange={(e) => handleChange('fatherOccupation', e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Mother's Full Name *
+                  <input
+                    type="text"
+                    value={formState.motherName}
+                    onChange={(e) => handleChange('motherName', e.target.value)}
+                  />
+                  {fieldErrors.motherName && <span className="field-hint error">{fieldErrors.motherName}</span>}
+                </label>
+                <label className="form-label">
+                  Mother's Occupation *
+                  <input
+                    type="text"
+                    value={formState.motherOccupation}
+                    onChange={(e) => handleChange('motherOccupation', e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Parent / Guardian Full Name *
+                  <input
+                    type="text"
+                    value={formState.guardianName}
+                    onChange={(e) => handleChange('guardianName', e.target.value)}
+                    placeholder="Who supports your education?"
+                  />
+                  {fieldErrors.guardianName && <span className="field-hint error">{fieldErrors.guardianName}</span>}
+                </label>
+                <label className="form-label">
+                  Guardian's Occupation *
+                  <input
+                    type="text"
+                    value={formState.guardianOccupation}
+                    onChange={(e) => handleChange('guardianOccupation', e.target.value)}
+                    placeholder="Enter guardian's occupation"
+                  />
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Family Income *
+                  <select
+                    value={formState.familyIncome}
+                    onChange={(e) => handleChange('familyIncome', e.target.value)}
+                  >
+                    <option value="">Select annual income</option>
+                    {incomeOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-label">
+                  General Weighted Average (%) *
+                  <select
+                    value={formState.gwa}
+                    onChange={(e) => handleChange('gwa', e.target.value)}
+                  >
+                    <option value="">Select GWA</option>
+                    {gwaOptions.map((score) => (
+                      <option key={score} value={score}>{score}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-grid two-cols">
+                <label className="form-label">
+                  Brothers (Count)
+                  <select
+                    value={formState.brothersCount}
+                    onChange={(e) => handleChange('brothersCount', e.target.value)}
+                  >
+                    <option value="">Choose</option>
+                    {countOptions.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-label">
+                  Sisters (Count)
+                  <select
+                    value={formState.sistersCount}
+                    onChange={(e) => handleChange('sistersCount', e.target.value)}
+                  >
+                    <option value="">Choose</option>
+                    {countOptions.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-yesno-block">
+                <p className="section-heading">Eligibility checks</p>
+                {[
+                  { label: 'Graduated Valedictorian or Highest Honors?', key: 'graduatedHonors' },
+                  { label: 'Champion / 1st placer in individual academic contest?', key: 'championContest' },
+                  { label: 'Are you an ALS passer?', key: 'alsPasser' },
+                  { label: 'Are you a Person with Disability (PWD)?', key: 'pwd' },
+                  { label: 'Are you a child of a PWD?', key: 'childOfPwd' },
+                  { label: 'Are you a solo parent?', key: 'soloParent' },
+                  { label: 'Member of Indigenous Group?', key: 'indigenousGroup' },
+                ].map((item) => (
+                  <div key={item.key} className="yesno-row">
+                    <span>{item.label}</span>
+                    <div className="yesno-buttons">
+                      {yesNoOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={formState[item.key] === option ? 'toggle-selected' : 'toggle-button'}
+                          onClick={() => handleChange(item.key, option)}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      case 3:
+        return (
+          <div className="form-step-shell">
+            <div className="section-card">
+              <div className="section-card-header">
+                <h3 className="section-card-title">Review your application</h3>
+                <p className="section-card-subtitle">Double-check your responses before you submit them for review.</p>
+              </div>
+              <div className="review-grid">
+                {Object.entries(formState).map(([key, value]) => (
+                  <div key={key} className="review-item">
+                    <strong>{key.replace(/([A-Z])/g, ' $1')}</strong>
+                    <span>{value ? String(value) : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }, [step, formState, user]);
+
+  return (
+    <div className="dashboard-card application-card">
+      <div className="application-header">
+        <div className="application-header-copy">
+          <p className=\"form-step-label\">SECTION {step + 1} OF {stepTitles.length}</p>
+          <h2>{stepTitles[step]}</h2>
+          <p className="form-step-subtitle">{stepDescriptions[step]}</p>
+        </div>
+
+        <div className="step-tabs" aria-label="Application steps">
+          {stepTitles.map((title, index) => (
+            <div key={title} className={`step-pill ${index === step ? 'active' : ''}`}>
+              <span>{index + 1}</span>
+              {title}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="progress-bar" aria-hidden>
+        <div
+          className="progress-fill"
+          style={{ width: `${((step + 1) / stepTitles.length) * 100}%` }}
+        />
+      </div>
+
+      <form onSubmit={handleSubmit} className="application-form">
+        {stepContent}
+        {error && <p className="form-error">{error}</p>}
+        {success && <p className="form-success">{success}</p>}
+        <div className="application-buttons">
+          <button type="button" className="secondary-button" onClick={handleBack} disabled={step === 0 || submitting}>
+            Back
+          </button>
+          {step < stepTitles.length - 1 ? (
+            <button type="button" className="primary-button" onClick={handleNext}>
+              Next
+            </button>
+          ) : (
+            <button type="submit" className="primary-button" disabled={submitting}>
+              {submitting ? 'Submitting...' : 'Submit Application'}
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default ApplicationForm;
